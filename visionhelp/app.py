@@ -22,6 +22,8 @@ st.set_page_config(
 st.title("CS2 Vision Lab")
 st.caption("Computer vision and video analysis")
 
+# ------------------------------------------------------------------ sidebar
+
 st.sidebar.header("Model settings")
 
 model_path = st.sidebar.text_input(
@@ -118,6 +120,8 @@ hold_seconds = st.sidebar.slider(
     0.1
 )
 
+# ------------------------------------------------------------------- upload
+
 uploaded = st.file_uploader(
     "Upload a video",
     type=["mp4", "avi", "mov", "mkv"]
@@ -125,6 +129,7 @@ uploaded = st.file_uploader(
 
 if uploaded:
 
+    # Save the video once per upload (Streamlit reruns the script on every click).
     file_key = (uploaded.name, uploaded.size)
 
     if st.session_state.get("file_key") != file_key:
@@ -146,6 +151,7 @@ if uploaded:
 
     video_path = st.session_state.video_path
 
+    # ------------------------------------------------- pass 1: detect + track
 
     st.subheader("Video analysis")
 
@@ -158,9 +164,7 @@ if uploaded:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        video_display = st.empty()
-        progress = st.progress(0)
-        stats = st.columns(3)
+        progress = st.progress(0, text="Analyzing video...")
 
         engine.reset_tracker()
 
@@ -174,15 +178,12 @@ if uploaded:
             if not success:
                 break
 
-            annotated, detections, processing_fps = (
-                engine.detect(
-                    frame,
-                    confidence,
-                    image_size,
-                    track=True,
-                    show_labels=show_labels,
-                    head_names=set(head_names)
-                )
+            _, detections, _ = engine.detect(
+                frame,
+                confidence,
+                image_size,
+                track=True,
+                draw=False
             )
 
             for d in detections:
@@ -193,34 +194,14 @@ if uploaded:
 
             frame_number += 1
 
-            video_display.image(
-                cv2.cvtColor(
-                    annotated,
-                    cv2.COLOR_BGR2RGB
-                ),
-                use_container_width=True
-            )
-
-            progress.progress(
-                min(frame_number / max(total_frames, 1), 1.0)
-            )
-
-            stats[0].metric(
-                "Frames processed",
-                frame_number
-            )
-
-            stats[1].metric(
-                "Objects detected",
-                len(all_detections)
-            )
-
-            stats[2].metric(
-                "Processing FPS",
-                f"{processing_fps:.1f}"
-            )
+            if frame_number % 5 == 0 or frame_number == total_frames:
+                progress.progress(
+                    min(frame_number / max(total_frames, 1), 1.0),
+                    text=f"Analyzing video... {frame_number} / {total_frames} frames"
+                )
 
         cap.release()
+        progress.empty()
 
         st.session_state.detections = all_detections
         st.session_state.meta = {
@@ -232,6 +213,8 @@ if uploaded:
 
         st.success("Video analysis completed!")
 
+    # --------------------------------------------------- pass 2: flick stats
+    # Runs on stored detections, so moving the sliders is instant (no YOLO rerun).
 
     detections = st.session_state.get("detections")
     meta = st.session_state.get("meta")
@@ -335,6 +318,7 @@ if uploaded:
                     use_container_width=True
                 )
 
+            # ------------------------------------------ pass 3: render video
 
             if st.button("Render video with flick overlay"):
 

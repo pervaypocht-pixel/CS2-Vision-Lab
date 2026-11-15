@@ -31,6 +31,7 @@ FLICK_COLORS = {
 
 
 def download_cs2_weights(target="models/yolo12n_cs2.pt"):
+    """Download the CS2 weights from Hugging Face into `target`."""
     folder = os.path.dirname(target) or "."
     os.makedirs(folder, exist_ok=True)
     downloaded = hf_hub_download(
@@ -43,8 +44,10 @@ def download_cs2_weights(target="models/yolo12n_cs2.pt"):
     return target
 
 
+# ----------------------------------------------------------------- drawing
 
 def _label(img, text, org, color, scale=0.55, thickness=1):
+    """Text with a dark background so it stays readable on any frame."""
     (w, h), base = cv2.getTextSize(text, FONT, scale, thickness)
     x, y = int(org[0]), int(org[1])
     y = max(y, h + base + 2)
@@ -72,6 +75,7 @@ def draw_detections(frame, detections, show_labels=True, head_names=()):
 
 
 def draw_flick(frame, flick):
+    """Draw one finished flick on `frame` (in place)."""
     h, w = frame.shape[:2]
     cx, cy = w // 2, h // 2
     color = FLICK_COLORS.get(flick.label, (255, 255, 255))
@@ -79,10 +83,12 @@ def draw_flick(frame, flick):
     x1, y1, x2, y2 = (int(v) for v in flick.end_box)
     hx, hy = (x1 + x2) // 2, (y1 + y2) // 2
 
+    # Path the head took on screen during the flick (shows the overshoot).
     pts = [(int(x), int(y)) for x, y in flick.path]
     for a, b in zip(pts, pts[1:]):
         cv2.line(frame, a, b, color, 2, cv2.LINE_AA)
 
+    # Head box at the moment the flick ended + line from crosshair to it.
     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
     cv2.line(frame, (cx, cy), (hx, hy), color, 1, cv2.LINE_AA)
     cv2.drawMarker(frame, (cx, cy), color, cv2.MARKER_CROSS, 16, 2)
@@ -94,6 +100,7 @@ def draw_flick(frame, flick):
 def render_video(video_path, output_path, detections, flicks,
                  head_names=(), show_labels=True, hold_seconds=0.8,
                  on_progress=None):
+    """Second pass: re-read the video and draw boxes + flick overlays."""
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -102,6 +109,7 @@ def render_video(video_path, output_path, detections, flicks,
     for d in detections:
         by_frame[d["frame"]].append(d)
 
+    # Show every flick result for `hold_seconds` after it ended.
     hold = max(1, int(hold_seconds * fps))
     active = defaultdict(list)
     for fl in flicks:
@@ -143,6 +151,7 @@ def render_video(video_path, output_path, detections, flicks,
     return output_path
 
 
+# ------------------------------------------------------------------ engine
 
 class VisionEngine:
 
@@ -154,6 +163,7 @@ class VisionEngine:
         return list(self.model.names.values())
 
     def reset_tracker(self):
+        """Call before a new video so enemy IDs start fresh."""
         predictor = getattr(self.model, "predictor", None)
         trackers = getattr(predictor, "trackers", None)
         if not trackers:
@@ -172,12 +182,14 @@ class VisionEngine:
         image_size=640,
         track=False,
         show_labels=True,
-        head_names=()
+        head_names=(),
+        draw=True
     ):
 
         start = time.perf_counter()
 
         if track:
+            # persist=True keeps enemy IDs stable from frame to frame
             results = self.model.track(
                 frame,
                 persist=True,
@@ -222,12 +234,15 @@ class VisionEngine:
                 "height": y2 - y1
             })
 
-        annotated = draw_detections(
-            frame,
-            detections,
-            show_labels,
-            head_names
-        )
+        if draw:
+            annotated = draw_detections(
+                frame,
+                detections,
+                show_labels,
+                head_names
+            )
+        else:
+            annotated = frame
 
         elapsed = time.perf_counter() - start
         fps = 1 / max(elapsed, 0.00001)
