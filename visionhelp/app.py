@@ -74,9 +74,6 @@ if not os.path.exists(model_path):
     st.stop()
 
 engine = load_model(model_path)
-
-# Flick settings live after the model loads, because the head class list
-# comes from the model itself (for this model: c, ch, t, th).
 class_names = engine.class_names
 default_heads = [
     n for n in class_names
@@ -129,7 +126,6 @@ uploaded = st.file_uploader(
 
 if uploaded:
 
-    # Save the video once per upload (Streamlit reruns the script on every click).
     file_key = (uploaded.name, uploaded.size)
 
     if st.session_state.get("file_key") != file_key:
@@ -150,8 +146,6 @@ if uploaded:
         st.session_state.rendered = None
 
     video_path = st.session_state.video_path
-
-    # ------------------------------------------------- pass 1: detect + track
 
     st.subheader("Video analysis")
 
@@ -212,9 +206,6 @@ if uploaded:
         st.session_state.rendered = None
 
         st.success("Video analysis completed!")
-
-    # --------------------------------------------------- pass 2: flick stats
-    # Runs on stored detections, so moving the sliders is instant (no YOLO rerun).
 
     detections = st.session_state.get("detections")
     meta = st.session_state.get("meta")
@@ -318,7 +309,6 @@ if uploaded:
                     use_container_width=True
                 )
 
-            # ------------------------------------------ pass 3: render video
 
             if st.button("Render video with flick overlay"):
 

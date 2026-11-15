@@ -9,9 +9,9 @@ from scipy.signal import savgol_filter
 ON_TARGET = "on target"
 OVERFLICK = "overflick"
 UNDERFLICK = "underflick"
-TOO_HIGH = "high"        # crosshair ended above the head
-TOO_LOW = "low"          # crosshair ended below the head
-OFF_LINE = "off-line"    # missed sideways, not along the flick direction
+TOO_HIGH = "high"        
+TOO_LOW = "low"          
+OFF_LINE = "off-line"    
 
 
 @dataclass
@@ -20,15 +20,15 @@ class Flick:
     start_frame: int
     end_frame: int
     label: str
-    start_err: tuple      # (x, y) in heads, head minus crosshair, at flick start
-    end_err: tuple        # (x, y) in heads, head minus crosshair, at flick end
-    along: float          # end error projected on the flick direction (+ = short, - = past)
-    cross: float          # end error perpendicular to the flick direction
-    miss: float           # distance crosshair -> head centre at flick end, in heads
-    start_dist: float     # distance crosshair -> head centre at flick start, in heads
+    start_err: tuple       
+    end_err: tuple        
+    along: float          
+    cross: float          
+    miss: float           
+    start_dist: float     
     duration_ms: float
-    end_box: tuple        # (x1, y1, x2, y2) head box in pixels at flick end
-    path: list = field(default_factory=list)  # head centre (x, y) pixels, start -> end
+    end_box: tuple        
+    path: list = field(default_factory=list)  
 
 
 def _smooth(arr, window=5, order=2):
@@ -169,11 +169,10 @@ def flicks_to_dataframe(flicks, fps):
             "enemy id": f.track_id,
             "result": f.label,
             "miss (heads)": round(f.miss, 2),
-            "along (heads)": round(f.along, 2),     # + = stopped short, - = went past
+            "along (heads)": round(f.along, 2),     
             "cross (heads)": round(f.cross, 2),
             "flick (ms)": round(f.duration_ms),
             "start dist (heads)": round(f.start_dist, 1),
-            # where the crosshair landed relative to the head (up = positive)
             "land_x": -f.end_err[0],
             "land_y": f.end_err[1],
         })
