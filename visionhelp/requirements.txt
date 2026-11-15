@@ -1,7 +1,9 @@
 streamlit
-ultralytics
 opencv-python
+ultralytics
+huggingface_hub
 numpy
 pandas
-pillow
-huggingface_hub
+scipy
+matplotlib
+lapx
