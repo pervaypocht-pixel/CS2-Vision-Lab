@@ -1,5 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
 streamlit
-opencv-python
+opencv-python-headless
 ultralytics
 huggingface_hub
 numpy
@@ -7,4 +10,3 @@ pandas
 scipy
 matplotlib
 lapx
-cv2
