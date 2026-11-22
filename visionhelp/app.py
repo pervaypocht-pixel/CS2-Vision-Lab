@@ -10,7 +10,82 @@ from flicks import (
     OFF_LINE, ON_TARGET, OVERFLICK, TOO_HIGH, TOO_LOW, UNDERFLICK,
     analyze_flicks, flicks_to_dataframe,
 )
-from vision import VisionEngine, download_cs2_weights, render_video
+from vision import VisionEngine, class_label, download_cs2_weights, render_video
+
+
+# ------------------------------------------------------ video requirements
+# Flick analysis measures how fast a head moves across the screen, so the video
+# needs enough pixels to see heads and enough frames to catch a ~100 ms flick.
+
+MIN_WIDTH, MIN_HEIGHT = 1280, 720    # below this, distant heads are missed
+REC_WIDTH, REC_HEIGHT = 1920, 1080   # recommended
+MIN_FPS = 60                         # a flick is only 4-9 frames long at 60 FPS
+FPS_TOLERANCE = 1.0                  # so that 59.94 FPS counts as 60
+MAX_DURATION_S = 60                  # keeps analysis time and memory reasonable
+LONG_DURATION_S = 30                 # warn above this
+
+
+def read_video_info(path):
+    cap = cv2.VideoCapture(path)
+    info = None
+
+    if cap.isOpened():
+        fps = cap.get(cv2.CAP_PROP_FPS) or 0
+        frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        info = {
+            "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            "fps": fps,
+            "frames": frames,
+            "duration": frames / fps if fps > 0 else 0,
+        }
+
+    cap.release()
+    return info
+
+
+def check_video(info):
+    """Returns (errors, warnings). Errors block the analysis, warnings do not."""
+    if not info or info["fps"] <= 0 or info["frames"] <= 0:
+        return [
+            "Could not read this video. Try exporting it again as MP4 (H.264)."
+        ], []
+
+    errors, warnings = [], []
+    w, h = info["width"], info["height"]
+
+    if w < MIN_WIDTH or h < MIN_HEIGHT:
+        errors.append(
+            f"Resolution is too low ({w}×{h}). The minimum is "
+            f"{MIN_WIDTH}×{MIN_HEIGHT}; enemy heads are too small to "
+            "detect reliably below that."
+        )
+    elif w < REC_WIDTH or h < REC_HEIGHT:
+        warnings.append(
+            f"Resolution is {w}×{h}. It works, but far-away heads may be "
+            f"missed. {REC_WIDTH}×{REC_HEIGHT} is recommended."
+        )
+
+    if info["fps"] < MIN_FPS - FPS_TOLERANCE:
+        errors.append(
+            f"Frame rate is too low ({info['fps']:.0f} FPS). Use at least "
+            f"{MIN_FPS} FPS: a flick lasts only about a tenth of a second, "
+            "so lower frame rates cannot capture where it ended."
+        )
+
+    if info["duration"] > MAX_DURATION_S:
+        errors.append(
+            f"Video is too long ({info['duration']:.0f} s). The maximum is "
+            f"{MAX_DURATION_S} seconds. Trim it to the rounds you want to "
+            "analyze."
+        )
+    elif info["duration"] > LONG_DURATION_S:
+        warnings.append(
+            f"Video is {info['duration']:.0f} s long. Analysis may take "
+            f"several minutes. Clips under {LONG_DURATION_S} s are fastest."
+        )
+
+    return errors, warnings
 
 
 st.set_page_config(
@@ -25,31 +100,46 @@ st.caption("Computer vision and video analysis")
 # ------------------------------------------------------------------ sidebar
 
 st.sidebar.header("Model settings")
+st.sidebar.caption("Control how players and heads are found in the video.")
 
 model_path = st.sidebar.text_input(
     "YOLO model path",
-    "models/yolo12n_cs2.pt"
+    "models/yolo12n_cs2.pt",
+    help="Location of the detection model file. The default is the CS2 "
+         "player detector, which finds Counter-Terrorists, Terrorists and "
+         "their heads. Only change this if you want to use a different model."
 )
 
 confidence = st.sidebar.slider(
-    "Confidence",
+    "Detection confidence",
     0.10,
     1.00,
     0.50,
-    0.05
+    0.05,
+    help="How sure the model must be before it counts something as a player "
+         "or head. Higher = fewer false detections, but far away or partly "
+         "hidden enemies may be missed. Lower = finds more enemies, but may "
+         "box things that are not players. 0.50 is a good starting point."
 )
 
 image_size = st.sidebar.select_slider(
-    "Inference resolution",
+    "Detection resolution (px)",
     options=[320, 480, 640, 960],
-    value=640
+    value=640,
+    help="The size frames are shrunk to before detection. Bigger (960) "
+         "spots small, far away heads better but analysis is slower. "
+         "Smaller (320) is fast but misses distant enemies. 640 is a good "
+         "balance."
 )
 
 st.sidebar.divider()
 
 show_labels = st.sidebar.checkbox(
     "Show detection labels",
-    value=True
+    value=True,
+    help="Writes the class, confidence and enemy number on every box in the "
+         "rendered video. Turn it off for a cleaner picture with only the "
+         "boxes. Only affects the rendered video."
 )
 
 
@@ -74,21 +164,31 @@ if not os.path.exists(model_path):
     st.stop()
 
 engine = load_model(model_path)
+
+# Flick settings live after the model loads, because the head class list
+# comes from the model itself (for this model: c, ch, t, th).
 class_names = engine.class_names
 default_heads = [
     n for n in class_names
     if n.lower().endswith("h") or "head" in n.lower()
 ]
+head_options = default_heads or class_names
 
 st.sidebar.divider()
 st.sidebar.header("Flick analysis")
+st.sidebar.caption(
+    "A flick is a fast aim movement toward an enemy head. "
+    "These settings decide what counts as a flick and how it is shown."
+)
 
 head_names = st.sidebar.multiselect(
-    "Enemy head classes",
-    class_names,
+    "Enemy heads to analyze",
+    head_options,
     default=default_heads,
-    help="Pick only the team you are playing against, "
-         "e.g. only 'th' if you play CT."
+    format_func=class_label,
+    help="Choose the team you are playing against. If you play as "
+         "Counter-Terrorist, select only 'Terrorist head'. Selecting both "
+         "also analyzes your teammates' heads, which gives wrong results."
 )
 
 speed_thr = st.sidebar.slider(
@@ -97,7 +197,11 @@ speed_thr = st.sidebar.slider(
     60.0,
     12.0,
     1.0,
-    help="Lower = more small movements count as flicks."
+    help="How fast a head must move across the screen to count as a flick. "
+         "Distance is measured in head widths ('heads'), so it works the "
+         "same at any range. Lower = slower, smaller movements also count "
+         "as flicks. Higher = only fast flicks count. If too many or too "
+         "few flicks are found, change this one first."
 )
 
 min_start = st.sidebar.slider(
@@ -106,7 +210,9 @@ min_start = st.sidebar.slider(
     5.0,
     1.0,
     0.25,
-    help="Ignore movements that start closer to the head than this."
+    help="Ignore aim movements that start closer to the head than this "
+         "(in head widths). Raise it to skip tiny adjustments and keep only "
+         "real flicks. Lower it to include small corrections."
 )
 
 hold_seconds = st.sidebar.slider(
@@ -114,18 +220,55 @@ hold_seconds = st.sidebar.slider(
     0.3,
     2.0,
     0.8,
-    0.1
+    0.1,
+    help="How long each flick result stays on screen in the rendered video "
+         "after the flick ends. Only affects the video, not the numbers."
 )
 
 # ------------------------------------------------------------------- upload
 
+st.info(
+    "**Video requirements for accurate analysis**\n\n"
+    f"- **Resolution:** at least {MIN_WIDTH}×{MIN_HEIGHT} "
+    f"({REC_WIDTH}×{REC_HEIGHT} recommended)\n"
+    f"- **Frame rate:** {MIN_FPS} FPS or higher\n"
+    f"- **Length:** up to {MAX_DURATION_S} seconds "
+    f"(under {LONG_DURATION_S} s is fastest)\n"
+    "- **Content:** your own first-person view with the crosshair in the "
+    "exact center of the screen\n"
+    "- **No editing:** no black bars, cropping, zoom, slow motion or speed-up"
+)
+
+with st.expander("Why these requirements?"):
+    st.markdown(
+        "- **Resolution:** enemy heads are only a few pixels wide at a "
+        "distance. Low resolution makes them undetectable or the boxes too "
+        "imprecise to judge a miss.\n"
+        "- **Frame rate:** a flick lasts about 60-150 ms. At 60 FPS that is "
+        "4-9 frames, enough to see where it ended. At 30 FPS it is only "
+        "2-4 frames.\n"
+        "- **Length:** every frame is analyzed, so long videos take a long "
+        "time and a lot of memory. Short clips of the fights you want to "
+        "review work best.\n"
+        "- **Crosshair in the center:** the analysis assumes the crosshair is "
+        "at the exact center of the picture. Black bars, cropping or a "
+        "different screen layout shift that center and make every result "
+        "wrong.\n"
+        "- **No slow motion or speed-up:** flick speed is measured in real "
+        "time, so changing the video speed changes the results."
+    )
+
 uploaded = st.file_uploader(
     "Upload a video",
-    type=["mp4", "avi", "mov", "mkv"]
+    type=["mp4", "avi", "mov", "mkv"],
+    help="Supported formats: MP4, AVI, MOV, MKV (MP4 with H.264 is the "
+         "safest). The maximum file size is 200 MB. Your video must meet "
+         "the requirements above."
 )
 
 if uploaded:
 
+    # Save the video once per upload (Streamlit reruns the script on every click).
     file_key = (uploaded.name, uploaded.size)
 
     if st.session_state.get("file_key") != file_key:
@@ -141,11 +284,34 @@ if uploaded:
 
         st.session_state.file_key = file_key
         st.session_state.video_path = temp.name
+        st.session_state.video_info = read_video_info(temp.name)
         st.session_state.detections = None
         st.session_state.meta = None
         st.session_state.rendered = None
 
     video_path = st.session_state.video_path
+
+    # ------------------------------------------------- check requirements
+
+    info = st.session_state.video_info
+    errors, warnings = check_video(info)
+
+    if info and info["fps"] > 0 and info["frames"] > 0:
+        st.caption(
+            f"{info['width']}×{info['height']} · "
+            f"{info['fps']:.0f} FPS · {info['duration']:.1f} s"
+        )
+
+    for message in errors:
+        st.error(message)
+
+    for message in warnings:
+        st.warning(message)
+
+    if errors:
+        st.stop()
+
+    # ------------------------------------------------- pass 1: detect + track
 
     st.subheader("Video analysis")
 
@@ -206,6 +372,9 @@ if uploaded:
         st.session_state.rendered = None
 
         st.success("Video analysis completed!")
+
+    # --------------------------------------------------- pass 2: flick stats
+    # Runs on stored detections, so moving the sliders is instant (no YOLO rerun).
 
     detections = st.session_state.get("detections")
     meta = st.session_state.get("meta")
@@ -309,6 +478,7 @@ if uploaded:
                     use_container_width=True
                 )
 
+            # ------------------------------------------ pass 3: render video
 
             if st.button("Render video with flick overlay"):
 
@@ -347,6 +517,8 @@ if uploaded:
         if detections:
             with st.expander("Raw detections"):
                 raw = pd.DataFrame(detections)
+                raw["name"] = raw["name"].map(class_label)
+                raw = raw.rename(columns={"name": "class"})
 
                 st.dataframe(
                     raw,

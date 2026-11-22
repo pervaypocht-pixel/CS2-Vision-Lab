@@ -30,6 +30,29 @@ FLICK_COLORS = {
 }
 
 
+# The model's class codes -> readable names.
+CLASS_LABELS = {
+    "c": "Counter-Terrorist body",
+    "ch": "Counter-Terrorist head",
+    "t": "Terrorist body",
+    "th": "Terrorist head",
+}
+
+# Shorter versions for the text drawn on the video boxes.
+CLASS_LABELS_SHORT = {
+    "c": "CT body",
+    "ch": "CT head",
+    "t": "T body",
+    "th": "T head",
+}
+
+
+def class_label(name, short=False):
+    """'ch' -> 'Counter-Terrorist head' (or 'CT head' when short=True)."""
+    table = CLASS_LABELS_SHORT if short else CLASS_LABELS
+    return table.get(name, name)
+
+
 def download_cs2_weights(target="models/yolo12n_cs2.pt"):
     """Download the CS2 weights from Hugging Face into `target`."""
     folder = os.path.dirname(target) or "."
@@ -66,7 +89,7 @@ def draw_detections(frame, detections, show_labels=True, head_names=()):
         cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
 
         if show_labels:
-            text = f'{d["name"]} {d["confidence"]:.2f}'
+            text = f'{class_label(d["name"], short=True)} {d["confidence"]:.2f}'
             if d.get("track_id") is not None:
                 text += f' #{d["track_id"]}'
             _label(out, text, (x1, max(20, y1 - 8)), color)
