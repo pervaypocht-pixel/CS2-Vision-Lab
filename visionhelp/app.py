@@ -95,7 +95,89 @@ st.set_page_config(
 )
 
 st.title("CS2 Vision Lab")
-st.caption("Computer vision and video analysis")
+st.caption("AI aim analysis for your Counter-Strike 2 gameplay videos")
+
+st.markdown(
+    "Upload a clip of your own CS2 gameplay and CS2 Vision Lab shows you "
+    "**where your crosshair stops when you flick to an enemy**: right on the "
+    "head, too far past it, too short, or too high or low."
+)
+
+tab_about, tab_use, tab_results = st.tabs(
+    ["What is this?", "How to use it", "Reading the results"]
+)
+
+with tab_about:
+    st.markdown(
+        "**CS2 Vision Lab** is an aim analysis tool for Counter-Strike 2. "
+        "An AI model (YOLO) watches your recorded gameplay, finds every "
+        "enemy and enemy head in each frame, and follows them through the "
+        "video. The app then measures how your crosshair moves toward each "
+        "head during a flick and checks where the flick ended.\n\n"
+        "**What it is for**\n"
+        "- Seeing your aim mistakes objectively instead of guessing\n"
+        "- Finding your habits: do you usually fly past the head "
+        "(overflick) or stop short of it (underflick)? Are you often too "
+        "high or too low?\n"
+        "- Checking whether your aim improves over time by comparing clips\n\n"
+        "**What it is not**\n"
+        "- It does not run during the game and it never touches "
+        "Counter-Strike. It only analyzes video files that you upload after "
+        "you have recorded them."
+    )
+    st.caption(
+        "Detection model: yolo12n_cs2 by Vombit (Hugging Face). "
+        "This project is not affiliated with Valve or Counter-Strike."
+    )
+
+with tab_use:
+    st.markdown(
+        "1. **Record** your gameplay in first person at 60 FPS or higher "
+        "(1920×1080 is best). The exact requirements are listed further "
+        "down this page.\n"
+        "2. **Pick the enemy team** in the sidebar under *Flick analysis*, "
+        "in *Enemy heads to analyze*. If you play Counter-Terrorist, select "
+        "only *Terrorist head*. The other settings have good defaults; "
+        "hover over the **?** next to any setting to see what it does.\n"
+        "3. **Upload** your video. It is checked right away, and you are "
+        "told if something does not meet the requirements.\n"
+        "4. Click **Start analysis** and wait for the progress bar to "
+        "finish. The results appear automatically.\n"
+        "5. **Read the results** (see the next tab).\n"
+        "6. Click **Render video with flick overlay** to get a video with "
+        "every flick marked on screen, then download it.\n"
+        "7. If too many or too few flicks are found, change **Flick speed "
+        "threshold** in the sidebar. The results update instantly, without "
+        "analyzing the video again."
+    )
+
+with tab_results:
+    st.markdown(
+        "**Result of each flick**\n"
+        "- **On target:** the crosshair ended inside the head box.\n"
+        "- **Overflick:** the crosshair moved past the head.\n"
+        "- **Underflick:** the crosshair stopped before reaching the head.\n"
+        "- **High / Low:** the crosshair ended above / below the head "
+        "(a vertical miss).\n"
+        "- **Off-line:** the crosshair missed sideways, off the path of the "
+        "flick.\n\n"
+        "**Numbers and charts**\n"
+        "- Distances are measured in *heads*: one head is the width of the "
+        "enemy's head on screen, so 1.0 means you ended one head width away "
+        "from its center. This makes results comparable at any distance.\n"
+        "- In the chart, each dot is where your crosshair ended a flick, "
+        "relative to the enemy head (the square in the middle). Dots "
+        "gathered on one side of the square show a consistent habit.\n"
+        "- The line under the metrics tells you if you tend to stop short "
+        "or go past the target on average.\n\n"
+        "**Good to know**\n"
+        "- One flick says little. Look for patterns across 20 or more "
+        "flicks, ideally from several clips.\n"
+        "- It measures where a flick ends, not the moment you click.\n"
+        "- A moving enemy adds some error that is not your aim.\n"
+        "- Far away or partly hidden heads can be missed. If a result looks "
+        "wrong, check it in the rendered video."
+    )
 
 # ------------------------------------------------------------------ sidebar
 
