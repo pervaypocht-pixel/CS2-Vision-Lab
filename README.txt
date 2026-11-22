@@ -1,1 +1,1 @@
-To use the project you either need to go to my streamlit cloud : 
+To use the project you either need to go to my streamlit cloud : https://cs2-vision-lab-mn5ppdv2mwur2u6ysuo7wa.streamlit.app/
